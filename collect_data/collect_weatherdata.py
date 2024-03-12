@@ -11,12 +11,12 @@ import mysql.connector
 
 
 # connect to database
-URL = "dbikes.ckujvx4azj9q.us-east-1.rds.amazonaws.com"
-PORT = "3306"
+URL = "*"
+PORT = "*"
 # before run this code, create database by python first.
 DB = "dbikes"
-USER = "liaoliao"
-PASSWORD = "12345678"
+USER = "*"
+PASSWORD = "**"
 
 engine = create_engine(
     "mysql+mysqlconnector://{}:{}@{}:{}/{}".format(USER, PASSWORD, URL, PORT, DB), echo=True)
@@ -47,7 +47,7 @@ def main():
         try:
             now = datetime.datetime.now()
             weather_data = requests.get('https://api.openweathermap.org/data/2.5/weather?lat=53.35&lon=-6.25&appid'
-                                        '=d600a7f76cb55b834000fa6f6e409193')
+                                        '=*')
             # print(weather_data, now)
             weathers = json.loads(weather_data.text)
             # print("----------------------------------------------------")
