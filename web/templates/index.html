@@ -1,0 +1,739 @@
+<!DOCTYPE html> <html lang="en">
+<head>
+ <title>Dublin Bikes</title>
+ <meta name="viewport" content="initial-scale=1.0">
+ <meta charset="utf-8">
+ <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+ <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCQk26p2ipg1xZj7n-UZl2OBkFPnPdluEU&callback=initMap&libraries=visualization"
+ async defer></script>
+
+
+
+
+ <style>
+
+ #map {
+  height:85%;
+  width: 75%;
+  float: right;
+ }
+
+
+ #content {
+  height:600px;
+  width: 600px;
+     }
+ html, body {
+ height: 100%;
+ margin: 0;
+ padding: 0;
+ }
+
+ header {
+        /*background-color:black;*/
+        background-color: #003300;
+        background-image: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.4) 80%);
+        background-size: 200%;
+        animation: shimmer 1s ease-in-out infinite;
+        color:white;
+        margin:0;
+        text-align: left;
+        font-weight: bold;
+        font-size: 30px;
+        padding:6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+  @keyframes shimmer {
+    0% {
+        background-position: 0% 0%;
+    }
+    100% {
+         background-position: 200% 0%;
+    }
+  }
+
+
+ .title {
+  margin-left: 35px;
+  }
+
+ .weather-container {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+ .location {
+  margin-right: 40px;
+  }
+
+ .weather-icon {
+  margin-right: 25px;
+  text-align: center;
+  }
+
+ .temperature {
+  margin-right: 30px;
+  text-align: center;
+  }
+
+ footer {
+    background-color:#003300;
+    color:white;
+    clear:both;
+    text-align: center;
+    font-size: 20px;
+    padding: 2px;
+    margin-top: 30px;
+   
+   }
+
+ h1 {
+  font-size: 2em;
+  font-weight: bold;
+  color: dodgerblue;
+  text-align: center;
+   }
+
+ h2 {
+  font-weight: bold;
+  color: darkgreen;
+   }
+
+p {
+  font-weight: bold;
+   }
+
+available-bike-stands, available-bikes {
+  color: darkgreen;
+  font-weight: bold;
+}
+
+#sidebar {
+  width: 25%;
+  height: 85%;
+  background-color: white;
+  padding: 20px;
+  box-sizing: border-box;
+  float: left;
+  overflow-y: scroll;
+}
+
+
+ </style>
+</head>
+
+<body>
+<header>
+<div class="title">Dublin Bikes</div>
+ <div class="weather-container">
+    <span class="location">Current weather</span>
+    <img src="" alt="weather icon" class="weather-icon">
+    <span class="temperature">Loading...</span>
+  </div>
+   <div id="current-time"></div>
+</header>
+    
+
+<div id="sidebar">
+  <h2>Choose your station</h2>
+  <select id="station-list"></select><br><br>
+  <span id="available-bike-stands" style="font-weight:bold;"></span><br>
+  <span id="available-bikes" style="font-weight:bold;"></span>
+  <h2>Bikes and Stands Availability Prediction</h2>
+  <h3>In future 24 hours</h3>
+  <canvas id="predictChart24"></canvas>
+  <h3>In future week</h3>
+  <canvas id="predictChart7"></canvas>
+
+  <h2>Plan your journey</h2>
+  <form id="directions-form">
+  <label for="destination-input" style="font-weight:bold;">Tell me where you want to go:</label>
+  <input type="text" id="destination-input" required>
+  <button type="submit">See time and route</button><br>
+  </form>
+  <div id="biking-time" style="font-weight:bold;"></div>
+
+  <h2>Find nearest station</h2>
+  <p>Tell me where you are:</p>
+  <input type="text" id="location-input" placeholder="Enter your location">
+  <button id="location-btn" onclick="findNearestStations()">Show nearest stations and distance</button>
+   <div id="results" style="font-weight:bold;"></div>
+</div>
+
+<div id="map"></div>
+    
+
+<script>
+  //  add current weather division
+  const temperatureElement = document.querySelector('.temperature');
+  const iconElement = document.querySelector('.weather-icon');
+
+  const apiUrl = `https://api.openweathermap.org/data/2.5/weather?lat=53.35&lon=-6.25&appid=d600a7f76cb55b834000fa6f6e409193`;
+
+  fetch(apiUrl)
+    .then(response => response.json())
+    .then(data => {
+      const temperature = Math.round(data.main.temp - 273.15);
+      const icon = data.weather[0].icon;
+
+      temperatureElement.textContent = `${temperature}°C`;
+      iconElement.src = `http://openweathermap.org/img/wn/${icon}.png`;
+      iconElement.alt = data.weather[0].description;
+    })
+    .catch(error => {
+      console.log(error);
+      temperatureElement.textContent = 'Error';
+      iconElement.src = '';
+      iconElement.alt = '';
+    });
+
+
+ // add current time
+  setInterval(function() {
+    var now = new Date();
+    var hours = now.getHours();
+    var minutes = now.getMinutes();
+    var seconds = now.getSeconds();
+    var timeString = hours + ':' + minutes + ':' + seconds;
+    document.getElementById('current-time').textContent = timeString;
+  }, 1000);
+
+
+ //  add information in dropdown bar
+  fetch('/real_time_data')
+    .then(response => response.json())
+    .then(data =>{
+            populateDropDown(data); // Call a function to populate the drop-down list with station names
+    });
+
+ //  show current availability for chosen station
+  function updateData(station) {
+    var availableBikeStandsElement = document.getElementById("available-bike-stands");
+        availableBikeStandsElement.innerHTML = "Current available bike stands: " + station.available_bike_stands;
+    var availableBikesElement = document.getElementById("available-bikes");
+        availableBikesElement.innerHTML = "Current available bikes: " + station.available_bikes;
+    }
+
+
+  function populateDropDown(data) {
+    var availableBikeStandsElement = document.getElementById("available-bike-stands");
+        availableBikeStandsElement.innerHTML = "Current available bike stands: " + data[0].available_bike_stands;
+    var availableBikesElement = document.getElementById("available-bikes");
+        availableBikesElement.innerHTML = "Current available bikes: " + data[0].available_bikes;
+    console.log(data[0]);
+    updatepredictChart24(data[0].number);
+    updatepredictChart7(data[0].number);
+
+
+    var select = document.getElementById("station-list");
+
+    for (var i = 0; i < data.length; i++) {
+        var option = document.createElement("option");
+        option.text = data[i].name;
+        option.value = data[i].number; // Set the value of each option to the station number
+        select.add(option);
+    }
+
+
+    select.addEventListener("change", function() {
+        var stationNumber = this.value;// Retrieve the selected station number
+        var selectedStation = data.find(function(station) {
+          return station.number == stationNumber;
+        }); // Find the selected station object from the data array
+        updateData(selectedStation);
+        updatepredictChart24(stationNumber);
+        updatepredictChart7(stationNumber);// Call a function to do something with the station number
+        // console.log('changeMarkerIcon called with stationNumber:', stationNumber);
+        changeMarkerIcon(stationNumber, "https://img.icons8.com/color/48/000000/smiling.png", markers,"https://img.icons8.com/color/48/000000/bicycle.png");
+    });
+}
+
+ //  add markers on Google map
+ var markers = [];
+
+ function addMarkers(stations) {
+  stations.forEach(station => {
+    var iconUrl = "https://img.icons8.com/color/48/000000/bicycle.png";
+    if (station.number === 42) {
+            iconUrl = "https://img.icons8.com/color/48/000000/smiling.png";
+            }
+    var marker = new google.maps.Marker({
+      position: {
+        lat: station.position_lat,
+        lng: station.position_lng,
+      },
+      map: map,
+      icon: iconUrl,
+      title: station.name,
+      station_number: station.number,
+      // label:station.number.toString()
+    });
+    markers.push(marker);
+
+    var contentString = '<div id="content"><h1>' + station.name + '</h1><p>Station Address: ' + station.address +
+      '</p><p>Sation Number: ' + station.number + '</p><p>Open Status: ' + station.status +
+      '</p><p>Available Stands: ' + station.bike_stands + '</p>' +
+      '<canvas id="occupancyChart">The average occupancy</canvas></div>';
+
+    marker.addListener('click', function () {
+
+
+      // Create a new InfoWindow instance for each marker
+      var infoWindow = new google.maps.InfoWindow({
+        content: contentString
+      });
+
+      // Close any previously open InfoWindows
+      if (window.currentInfoWindow) {
+        window.currentInfoWindow.close();
+      }
+
+      // Set the new InfoWindow as the current open one
+      window.currentInfoWindow = infoWindow;
+
+      infoWindow.open(map, marker);
+      updateOccupancyChart(station.number);
+    });
+  });
+}
+
+// change the marker shape
+ function changeMarkerIcon(stationNumber, iconUrl,markers,originalIconUrl) {
+  markers.forEach(marker => {
+    if (marker.get('station_number') == stationNumber) {
+      marker.setIcon(iconUrl);
+      // marker.setLabel(availableBikes.toString());
+    }else {
+      marker.setIcon(originalIconUrl);
+    }
+  });
+ }
+
+
+
+ function getStations(){
+  fetch("/stations")
+  .then((response) => response.json())
+  .then((data) => {
+   console.log("fetch response", typeof data);
+   addMarkers(data);
+  });
+}
+
+ function initMap() {
+   const dublin = { lat: 53.350140, lng: -6.266155 };
+
+   // The map, centered at Dublin
+   map = new google.maps.Map(document.getElementById("map"), {
+   zoom: 12,
+   center: dublin,
+   });
+
+   // The marker, positioned at Dublin
+   //   const marker = new google.maps.Marker({
+   // position: dublin,
+   // map: map,
+   // });
+
+  getStations();
+     
+//  made heatmap on the map
+//  get real time date, then call addHeatmapLayer method
+  fetch("/real_time_data")
+    .then((response) => response.json())
+    .then((data) => {
+      addHeatmapLayer(data);
+    });
+}
+var map;
+window.initMap = initMap;
+    
+    
+let occupancyChart;
+
+function updateOccupancyChart(station_id) {
+  fetch(`/occupancy/${station_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const parsedData = data.data;
+        const labels = parsedData.map(item => item[0]);
+        const values = parsedData.map(item => item[1]);
+        const standValues = parsedData.map(item => item[2]);
+        console.log(labels);
+        console.log(values);
+        console.log(standValues);
+
+      if (occupancyChart) {
+        occupancyChart.destroy();
+      }
+
+      const ctx = document.getElementById('occupancyChart').getContext('2d');
+      occupancyChart = new Chart(ctx,
+          {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Average Hourly Available Bikes',
+              data: values,
+              backgroundColor: 'rgba(255, 204, 204, 0.2)',
+              borderColor: 'rgba(255, 204, 204, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Average Hourly Available Stands',
+              data: standValues,
+              backgroundColor: 'rgba(153, 204, 255, 0.2)',
+              borderColor: 'rgba(153, 204, 255, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    })
+    .catch(error => {
+      console.log(error);
+    });
+}
+
+    
+
+let predictChart24;
+
+function updatepredictChart24(station_id) {
+  fetch(`/predicted_data_24/${station_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const parsedData = data.data;
+        const labels = parsedData.map(item => item[0]);
+        const predictBikeValues = parsedData.map(item => item[1]);
+        const predictStandValues = parsedData.map(item => item[2]);
+        console.log(labels);
+        console.log(predictBikeValues);
+        console.log(predictStandValues);
+
+      if (predictChart24) {
+        predictChart24.destroy();
+      }
+
+      const ctx = document.getElementById('predictChart24').getContext('2d');
+      predictChart24 = new Chart(ctx,
+
+          {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Predicted Hourly Available Bikes',
+              data: predictBikeValues,
+              backgroundColor: 'rgba(75, 192, 192, 0.2)',
+              borderColor: 'rgba(75, 192, 192, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Predicted Hourly Available Stands',
+              data: predictStandValues,
+              backgroundColor: 'rgba(255, 206, 86, 0.4)',
+              borderColor: 'rgba(255, 206, 86, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    })
+    .catch(error => {
+      console.log(error);
+    });
+}    
+    
+
+let predictChart7;
+
+function updatepredictChart7(station_id) {
+  fetch(`/predicted_data_7/${station_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const parsedData = data.data;
+        const labels = parsedData.map(item => item[0]);
+        const predictBikeValues7 = parsedData.map(item => item[1]);
+        const predictStandValues7 = parsedData.map(item => item[2]);
+        console.log(labels);
+        console.log(predictBikeValues7);
+        console.log(predictStandValues7);
+
+      if (predictChart7) {
+        predictChart7.destroy();
+      }
+
+      const ctx = document.getElementById('predictChart7').getContext('2d');
+      predictChart7 = new Chart(ctx,
+
+          {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Predicted Weekly Available Bikes',
+              data: predictBikeValues7,
+              backgroundColor: 'rgba(75, 192, 192, 0.2)',
+              borderColor: 'rgba(75, 192, 192, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Predicted Weekly Available Stands',
+              data: predictStandValues7,
+              backgroundColor: 'rgba(255, 206, 86, 0.4)',
+              borderColor: 'rgba(255, 206, 86, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    })
+    .catch(error => {
+      console.log(error);
+    });
+}  
+
+function addHeatmapLayer(data) {
+  // Create an array of google.maps.LatLng objects
+  const heatmapData = data.map(station => {
+    return {
+      location: new google.maps.LatLng(station.position.lat, station.position.lng),
+      weight: station.available_bikes
+    };
+  });
+
+  // Create a new heatmap layer and set its data and options
+  const heatmap = new google.maps.visualization.HeatmapLayer({
+    data: heatmapData,
+    dissipating: false,
+    maxIntensity: 100, // Adjust this value based on your data
+    radius: 0.008 // Adjust this value for the desired heatmap radius
+  });
+
+  // Add the heatmap layer to the map
+  heatmap.setMap(map);
+
+  // // Add pulsing effect
+  // let opacity = 0.5;
+  // let increment = -0.005;
+  // const minOpacity = 0.3;
+  // const maxOpacity = 0.6;
+  // setInterval(() => {
+  //   opacity += increment;
+  //   if (opacity < minOpacity || opacity > maxOpacity) {
+  //     increment = -increment;
+  //   }
+  //   heatmap.set('radius', heatmap.get('radius') + 0.01);
+  //   heatmap.set('opacity', opacity);
+  // }, 50);
+
+}
+
+
+// biking time and route section
+ // Get references to the form and result elements
+  const form = document.getElementById('directions-form');
+  const bikingTimeElement = document.getElementById('biking-time');
+
+// Handle the form submission
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+
+  // Get the user's destination input
+    const destination = document.getElementById('destination-input').value;
+
+  // Call the calculateBikingTime function with the user's input
+    console.log(destination)
+    calculateBikingTime(destination);
+  });
+
+  function calculateBikingTime(destination) {
+            const ucdPosition = new google.maps.LatLng(53.3065, -6.2187);
+
+      // Create a DirectionsService object to use the Google Maps Directions API
+            const directionsService = new google.maps.DirectionsService();
+
+      // Create a DirectionsRenderer object to display the route on the map
+            const directionsRenderer = new google.maps.DirectionsRenderer();
+            // Set the previous DirectionsRenderer to null
+
+      // Configure the DirectionsRenderer to show the route as a bicycling route
+            directionsRenderer.setOptions({
+                preserveViewport: true,
+                suppressMarkers: true,
+                polylineOptions: {
+                    strokeWeight: 5,
+                    path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                    icons: [{
+                        icon: {
+                             path: google.maps.SymbolPath.CIRCLE,
+                             scale: 8,
+                             strokeColor: "blue",
+                             strokeOpacity: 0.7,
+                             fillColor: "blue",
+                             fillOpacity: 1,
+                        },
+                        repeat: '150px'
+                    }],
+                    strokeColor: function (n) {
+                        return 'hsl(' + (n * 7) + ',100%,50%)';
+                        }
+                    }
+            });
+
+
+      // Create a DirectionsRequest object with the user's destination and the mode of travel (bicycling)
+            const request = {
+                origin: ucdPosition,
+                destination: destination,
+                travelMode: google.maps.TravelMode.BICYCLING,
+                language:'en'
+            };
+
+      // Call the DirectionsService to get the route information
+            directionsService.route(request, function(result, status) {
+                if (status == google.maps.DirectionsStatus.OK) {
+          // Display the route on the map using the DirectionsRenderer
+                    directionsRenderer.setDirections(result);
+
+          // Get the total distance and duration of the route
+                    const bikingTime = result.routes[0].legs[0].duration.text; // Convert duration to minutes
+
+          // Display the biking time to the user
+                    displayBikingTime(bikingTime);
+                    directionsRenderer.setMap(map);
+                } else {
+          // Display an error message to the user
+                    displayBikingTime('Sorry, there was an error calculating the biking time.');
+                }
+            });
+
+  }
+
+// Function to display the biking time to the user
+ function displayBikingTime(bikingTime) {
+  const bikingTimeDiv = document.getElementById('biking-time');
+  bikingTimeDiv.innerHTML = `Biking time: ${bikingTime}`;
+ }
+
+ function findNearestStations() {
+        // Get the user's location input
+        var locationInput = document.getElementById("location-input").value;
+
+        // Use the Google Maps Geocoding API to get the latitude and longitude of the user's input location
+        fetch("https://maps.googleapis.com/maps/api/geocode/json?address=" + encodeURIComponent(locationInput) + "&key=AIzaSyCQk26p2ipg1xZj7n-UZl2OBkFPnPdluEU")
+          .then(response => response.json())
+          .then(data => {
+            if (data.results.length > 0) {
+              var userLat = data.results[0].geometry.location.lat;
+              var userLng = data.results[0].geometry.location.lng;
+
+              // Make a fetch request to fetch the list of stations
+              fetch("/stations")
+                .then(response => response.json())
+                .then(stations => {
+                  // Calculate the distance between the user's location and each station
+                  stations.forEach(function(station) {
+                    var stationLat = station.position_lat;
+                    var stationLng = station.position_lng;
+                    var distance = getDistance(userLat, userLng, stationLat, stationLng);
+                    station.distance = distance;
+                  });
+
+                  // Sort the stations by distance
+                  stations.sort(function(a, b) {
+                    return a.distance - b.distance;
+                  });
+
+                  // Show the three nearest stations
+                  var nearestStations = stations.slice(0, 3);
+                  var resultsDiv = document.getElementById("results");
+                  resultsDiv.innerHTML = "";
+                  nearestStations.forEach(function(station) {
+                    var stationName = station.name;
+                    var distance = station.distance.toFixed(0);
+                    var resultText = "*" + stationName + ": " + distance + " meters<br>";
+                    resultsDiv.innerHTML += resultText;
+                  });
+                })
+                .catch(error => {
+                  console.log("Error fetching stations", error);
+                  var resultsDiv = document.getElementById("results");
+                  resultsDiv.innerHTML = "Sorry, there are no nearby stations.";
+                });
+            } else {
+              console.log("Location not found");
+              var resultsDiv = document.getElementById("results");
+                  resultsDiv.innerHTML = "Sorry, there are no nearby stations.";
+            }
+          })
+          .catch(error => {
+            console.log("Error geocoding location", error);
+            var resultsDiv = document.getElementById("results");
+                resultsDiv.innerHTML = "Sorry, there are no nearby stations.";
+          });
+      }
+
+      // Calculate the distance between two coordinates using the Haversine formula
+      function getDistance(lat1, lng1, lat2, lng2) {
+        var earthRadius = 6371; // kilometers
+        var dLat = toRadians(lat2 - lat1);
+        var dLng = toRadians(lng2 - lng1);
+        var a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRadians(lat1)) *
+            Math.cos(toRadians(lat2)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        var distance = earthRadius * c * 1000; // meters
+        return distance;
+      }
+
+      // Convert degrees to radians
+      function toRadians(degrees) {
+        return degrees * (Math.PI / 180);
+      }
+
+
+
+
+</script>
+
+
+
+ <footer>
+  <p><b>Copyright @ SE AAA 2023</b></p>
+</footer>
+ </body>
+</html>
